@@ -1,0 +1,90 @@
+/* PREAMBLE START */
+#define __RUN_CC__ 1
+#include "run_runtime.h"
+#include "run_bool.h"
+#include "run_nat.h"
+/* PREAMBLE END */
+// Test switch statements
+   int test_switch_simple ( int x ) {
+ run_obj_t test_switch_simple_step ( run_obj_t self_void , run_obj_t test_switch_simple_arg_void );
+  return ((int) run_step ( (run_obj_t)program_step , (run_obj_t)test_switch_simple_step , (run_obj_t)(x) )) ;
+}
+
+
+   int test_switch_fallthrough ( int x ) {
+ run_obj_t test_switch_fallthrough_step ( run_obj_t self_void , run_obj_t test_switch_fallthrough_arg_void );
+  return ((int) run_step ( (run_obj_t)program_step , (run_obj_t)test_switch_fallthrough_step , (run_obj_t)(x) )) ;
+}
+
+
+     int test_switch_nested ( int x , int y ) {
+ run_obj_t test_switch_nested_step ( run_obj_t self_void , run_obj_t test_switch_nested_arg_void );
+  run_obj_t args[] = { (run_obj_t)(x) , (run_obj_t)(y) };
+  return ((int) run_step ( (run_obj_t)program_step , (run_obj_t)test_switch_nested_step , (run_obj_t)args )) ;
+}
+
+
+/* SPECIALIZED CODE START */
+ run_obj_t test_switch_simple_step ( run_obj_t self_void , run_obj_t test_switch_simple_arg_void ) { 
+  run_cc_start_test_switch_simple_step: ;
+  run_obj_t (*self)(run_obj_t, run_obj_t) = (run_obj_t(*)(run_obj_t, run_obj_t))self_void;
+  __auto_type x = test_switch_simple_arg_void;
+
+   switch ( x )  
+    {  case 1 : 
+       return ( run_obj_t ) ( 10 ) ;
+
+     case 2 : 
+       return ( run_obj_t ) ( 20 ) ;
+
+    default : 
+       return ( run_obj_t ) ( 0 ) ;
+
+   }
+}
+ run_obj_t test_switch_fallthrough_step ( run_obj_t self_void , run_obj_t test_switch_fallthrough_arg_void ) { 
+  run_cc_start_test_switch_fallthrough_step: ;
+  run_obj_t (*self)(run_obj_t, run_obj_t) = (run_obj_t(*)(run_obj_t, run_obj_t))self_void;
+  __auto_type x = test_switch_fallthrough_arg_void;
+
+     int result = 0 ; 
+   switch ( x )  
+    {  case 1 : 
+     case 2 : 
+     case 3 : 
+        result = 100 ; 
+      break ; 
+     case 4 : 
+        result = 200 ; 
+      break ; 
+    default : 
+        result =  - 1  ; 
+   }
+   return ( run_obj_t ) ( result ) ;
+
+}
+ run_obj_t test_switch_nested_step ( run_obj_t self_void , run_obj_t test_switch_nested_arg_void ) { 
+  run_cc_start_test_switch_nested_step: ;
+  run_obj_t (*self)(run_obj_t, run_obj_t) = (run_obj_t(*)(run_obj_t, run_obj_t))self_void;
+  run_obj_t run_cc_tco_args[64];
+  __auto_type x = ((run_obj_t*)test_switch_nested_arg_void)[0];
+  __auto_type y = ((run_obj_t*)test_switch_nested_arg_void)[1];
+
+   switch ( x )  
+    {  case 1 : 
+       switch ( y )  
+        {  case 1 :   return ( run_obj_t ) ( 11 ) ;
+
+         case 2 :   return ( run_obj_t ) ( 12 ) ;
+
+       }
+      break ; 
+     case 2 : 
+       return ( run_obj_t ) ( 20 ) ;
+
+   }
+   return ( run_obj_t ) ( 0 ) ;
+
+}
+
+/* SPECIALIZED CODE END */

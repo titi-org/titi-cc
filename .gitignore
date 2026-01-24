@@ -1,0 +1,46 @@
+# Artifacts
+bin/
+build/
+*.tab.*
+*.yy.c
+*.o
+*.exe
+*.i
+*.out
+*_jit*
+pp.c
+
+# Logs
+logs/
+*.log
+benchmark_gcc.log
+benchmark_titi.log
+build.log
+test_gen.log
+run_cc_bench_fail.err
+
+# Tests
+tests/*.exe
+tests/*.o
+tests/*-gcc
+tests/*-clang
+tests/*.gcc.out
+tests/*.clang.out
+tests/*.run-gcc.out
+tests/*.run-clang.out
+tests/*.ast.out
+
+# Debug & Temporary
+debug_jit.c
+manual_debug.c
+manual_debug.txt
+manual_output.c
+source_dump.c
+test_out_new.c
+test_out_new2.c
+*.gch
+/tmp/*.txt
+
+# Benchmarks
+benchmarks/rapidhash/
+*.bak

@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Bison and Flex
+      run: sudo apt-get install bison flex
+
+    - name: Verify Build
+      run: make
+
+    - name: Run Core Tests
+      run: make tests
+
+    - name: Run Rapidhash benchmarks
+      run: make benchmarks
+      continue-on-error: true
