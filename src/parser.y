@@ -483,6 +483,7 @@ function_body
 		}
 	} RBRACE {
 		RunCCContext *ctx = get_current_context();
+		char *body = stop_buffering();
 		if (run_mode && should_emit_run() && ctx && !ctx->uses_aggregate &&
 		    !needs_run_nat && !needs_run_bool) {
 			pop_state(scanner);
@@ -494,6 +495,7 @@ function_body
 			/* Passthrough: empty body */
 			print_str(" { }\n");
 		}
+		if (body) free(body);
     }
 	;
 
