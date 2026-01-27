@@ -6,10 +6,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <unistd.h>
-#ifndef MODULAR_PARSER
 #include "parser.tab.h"
-#define YYSTYPE REAL_STYPE
-#endif
 }
 %option prefix="top_"
 %option reentrant bison-bridge
@@ -23,7 +20,7 @@
 %s NATIVE
 
 %{
-#include "cc.h"
+/* cc.h included via parser.tab.h */
 
 static int native_depth = 0;
 int val_mode = 0;
@@ -352,8 +349,8 @@ PR_CATEGORY		({PR_KEYWORD_KW}|{MORPHISM_KW})
 
 /* Lexer utility functions */
 
-#include "context.h"
-#include "val.h"
+
+
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdlib.h>

@@ -3,17 +3,1053 @@
 }
 
 %code requires {
-    #include "val.h"
+
+/* START OF run_runtime.h */
+#ifndef RUN_RUNTIME_H
+#define RUN_RUNTIME_H
+
+#include <assert.h>
+#include <inttypes.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#if defined(__x86_64__) || defined(__i386__)
+// #include <x86intrin.h>
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*
+ * The universal categorical object type.
+ *
+ * Rationale: run_obj_t is defined as intptr_t because it is the only arithmetic
+ * type in C that can hold both pointers and signed integers while remaining
+ * compatible with the equality '==' operator. This is essential for maintaining
+ * the clean, cast-free DSL syntax in tests.
+ */
+typedef intptr_t run_obj_t;
+
+/*
+ * C23 reproducible and unsequenced attributes
+ */
+#if defined(__GNUC__) && __GNUC__ < 14
+#define RUN_REPRODUCIBLE __attribute__((pure))
+#define RUN_UNSEQUENCED __attribute__((const))
+#else
+#define RUN_REPRODUCIBLE [[reproducible]]
+#define RUN_UNSEQUENCED [[unsequenced]]
+#endif
+
+#ifndef RUN_CC_PAIR_DEFINED
+#define RUN_CC_PAIR_DEFINED
+struct run_cc_pair {
+  run_obj_t first;
+  run_obj_t second;
+};
+#endif
+
+/*
+ * Forward declarations of core functions to break circular dependencies
+ */
+RUN_REPRODUCIBLE static inline run_obj_t(eval)(run_obj_t p, run_obj_t a);
+RUN_UNSEQUENCED static inline run_obj_t(data)(run_obj_t x);
+RUN_REPRODUCIBLE static inline run_obj_t(program)(run_obj_t f, run_obj_t y);
+RUN_REPRODUCIBLE static inline run_obj_t(kleene)(run_obj_t g, run_obj_t y);
+RUN_REPRODUCIBLE static inline run_obj_t(run)(run_obj_t p, run_obj_t x,
+                                              run_obj_t a);
+RUN_REPRODUCIBLE static inline run_obj_t(embed)(run_obj_t a);
+RUN_REPRODUCIBLE static inline run_obj_t run_data_va(int count, ...);
+RUN_REPRODUCIBLE static inline run_obj_t partial_step(run_obj_t self,
+                                                      run_obj_t args);
+
+/*
+ * Removed variadic macro definitions.
+ * All variadic forms are now handled by the compiler (val.y)
+ * which desugars them into chains of binary eval/program/kleene calls.
+ */
+#define compute(x) (compute)((run_obj_t)(uintptr_t)(x))
+#define data(x) (data)((run_obj_t)(uintptr_t)(x))
+#define swap(x, y) (swap)((run_obj_t)(uintptr_t)(x), (run_obj_t)(uintptr_t)(y))
+#define copy(x) (copy)((run_obj_t)(uintptr_t)(x))
+#define delete(x) (delete)((run_obj_t)(uintptr_t)(x))
+#define function(x) (function)((run_obj_t)(uintptr_t)(x))
+#define process(x, y)                                                          \
+  (process)((run_obj_t)(uintptr_t)(x), (run_obj_t)(uintptr_t)(y))
+#define sequential(g, f, x)                                                    \
+  (sequential)((run_obj_t)(uintptr_t)(g), (run_obj_t)(uintptr_t)(f),           \
+               (run_obj_t)(uintptr_t)(x))
+#define partial(f, y)                                                          \
+  (partial)((run_obj_t)(uintptr_t)(f), (run_obj_t)(uintptr_t)(y))
+#define fixpoint(e) (fixpoint)((run_obj_t)(uintptr_t)(e))
+#define run(p, x, a)                                                           \
+  (run)((run_obj_t)(uintptr_t)(p), (run_obj_t)(uintptr_t)(x),                  \
+        (run_obj_t)(uintptr_t)(a))
+#define parallel(f, t, a, c)                                                   \
+  (parallel)((run_obj_t)(uintptr_t)(f), (run_obj_t)(uintptr_t)(t),             \
+             (run_obj_t)(uintptr_t)(a), (run_obj_t)(uintptr_t)(c))
+#define eval(p, a) (eval)((run_obj_t)(uintptr_t)(p), (run_obj_t)(uintptr_t)(a))
+#define program(f, y)                                                          \
+  (program)((run_obj_t)(uintptr_t)(f), (run_obj_t)(uintptr_t)(y))
+#define kleene(g, y)                                                           \
+  (kleene)((run_obj_t)(uintptr_t)(g), (run_obj_t)(uintptr_t)(y))
+#define identity(x) (identity)((run_obj_t)(uintptr_t)(x))
+#define idempotent(x) (idempotent)((run_obj_t)(uintptr_t)(x))
+
+/* C-like operator helpers used by transformed output. */
+RUN_UNSEQUENCED static inline run_obj_t run_cc_add(run_obj_t a, run_obj_t b) {
+  return (run_obj_t)((intptr_t)a + (intptr_t)b);
+}
+RUN_UNSEQUENCED static inline run_obj_t run_cc_sub(run_obj_t a, run_obj_t b) {
+  return (run_obj_t)((intptr_t)a - (intptr_t)b);
+}
+RUN_UNSEQUENCED static inline run_obj_t run_cc_mul(run_obj_t a, run_obj_t b) {
+  return (run_obj_t)((intptr_t)a * (intptr_t)b);
+}
+RUN_UNSEQUENCED static inline run_obj_t run_cc_div(run_obj_t a, run_obj_t b) {
+  return (run_obj_t)((intptr_t)a / (intptr_t)b);
+}
+RUN_UNSEQUENCED static inline run_obj_t run_cc_mod(run_obj_t a, run_obj_t b) {
+  return (run_obj_t)((intptr_t)a % (intptr_t)b);
+}
+RUN_UNSEQUENCED static inline run_obj_t run_cc_lt(run_obj_t a, run_obj_t b) {
+  return (run_obj_t)((intptr_t)a < (intptr_t)b);
+}
+RUN_UNSEQUENCED static inline run_obj_t run_cc_gt(run_obj_t a, run_obj_t b) {
+  return (run_obj_t)((intptr_t)a > (intptr_t)b);
+}
+RUN_UNSEQUENCED static inline run_obj_t run_cc_le(run_obj_t a, run_obj_t b) {
+  return (run_obj_t)((intptr_t)a <= (intptr_t)b);
+}
+RUN_UNSEQUENCED static inline run_obj_t run_cc_ge(run_obj_t a, run_obj_t b) {
+  return (run_obj_t)((intptr_t)a >= (intptr_t)b);
+}
+RUN_UNSEQUENCED static inline run_obj_t run_cc_eq(run_obj_t a, run_obj_t b) {
+  return (run_obj_t)((intptr_t)a == (intptr_t)b);
+}
+RUN_UNSEQUENCED static inline run_obj_t run_cc_ne(run_obj_t a, run_obj_t b) {
+  return (run_obj_t)((intptr_t)a != (intptr_t)b);
+}
+RUN_UNSEQUENCED static inline run_obj_t run_cc_and(run_obj_t a, run_obj_t b) {
+  return (run_obj_t)((intptr_t)a && (intptr_t)b);
+}
+RUN_UNSEQUENCED static inline run_obj_t run_cc_or(run_obj_t a, run_obj_t b) {
+  return (run_obj_t)((intptr_t)a || (intptr_t)b);
+}
+RUN_UNSEQUENCED static inline run_obj_t run_cc_not(run_obj_t a) {
+  return (run_obj_t)(!(intptr_t)a);
+}
+
+/*
+ * Implementations of base morphism functions
+ */
+
+RUN_REPRODUCIBLE
+static inline run_obj_t(run)(run_obj_t p, run_obj_t x, run_obj_t a) {
+  union {
+    run_obj_t (*f)(run_obj_t, run_obj_t);
+    run_obj_t v;
+  } cast;
+  cast.v = p;
+  return cast.f(x, a);
+}
+
+RUN_REPRODUCIBLE
+static inline run_obj_t(program)(run_obj_t f, run_obj_t y) {
+  return eval(f, y);
+}
+
+RUN_REPRODUCIBLE
+static inline run_obj_t(kleene)(run_obj_t g, run_obj_t y) { return eval(g, y); }
+
+RUN_UNSEQUENCED
+static inline run_obj_t point_step(run_obj_t self, run_obj_t args) {
+  (void)args;
+  return ((run_obj_t *)self)[1];
+}
+
+RUN_UNSEQUENCED
+static inline run_obj_t p1_step(run_obj_t self, run_obj_t args) {
+  (void)self;
+  struct run_cc_pair *p = (struct run_cc_pair *)args;
+  return p->first;
+}
+
+RUN_UNSEQUENCED
+static inline run_obj_t p2_step(run_obj_t self, run_obj_t args) {
+  (void)self;
+  struct run_cc_pair *p = (struct run_cc_pair *)args;
+  return p->second;
+}
+
+RUN_REPRODUCIBLE
+static inline run_obj_t(eval)(run_obj_t p, run_obj_t a) {
+  if (p == (run_obj_t)1) { /* RUN_BOOL_TRUE as first projection p1 */
+    struct run_cc_pair *pair = (struct run_cc_pair *)a;
+    return pair ? pair->first : (run_obj_t)0;
+  }
+  if (p == (run_obj_t)0) { /* RUN_BOOL_FALSE as second projection p2 */
+    struct run_cc_pair *pair = (struct run_cc_pair *)a;
+    return pair ? pair->second : (run_obj_t)0;
+  }
+  if (p > (run_obj_t)1 && p <= (run_obj_t)4096)
+    return p;
+
+  if (p > (run_obj_t)4096) {
+    /* Low-level point check: if first element is point_step, return second */
+    if (((run_obj_t *)p)[0] == (run_obj_t)point_step) {
+      return ((run_obj_t *)p)[1];
+    }
+
+    /* Partial evaluator check: [partial_step, f, y] */
+    if (((run_obj_t *)p)[0] == (run_obj_t)partial_step) {
+      return partial_step(p, a);
+    }
+
+    /* Morphism call: assume p is a function pointer run_obj_t (*)(run_obj_t) */
+    union {
+      run_obj_t (*f)(run_obj_t);
+      run_obj_t v;
+    } cast;
+    cast.v = p;
+    return cast.f(a);
+  }
+  return (run_obj_t)0;
+}
+
+RUN_UNSEQUENCED
+static inline run_obj_t run_iseq(run_obj_t p, run_obj_t q) {
+  return (p == q) ? (run_obj_t)1 : (run_obj_t)0;
+}
+
+RUN_REPRODUCIBLE
+static inline run_obj_t(embed)(run_obj_t a) {
+  struct run_cc_pair *p =
+      (struct run_cc_pair *)malloc(sizeof(struct run_cc_pair));
+  p->first = (run_obj_t)point_step;
+  p->second = a;
+  return (run_obj_t)p;
+}
+
+RUN_REPRODUCIBLE
+static inline run_obj_t run_data_va(int count, ...) {
+  va_list ap;
+  va_start(ap, count);
+  if (count <= 0) {
+    va_end(ap);
+    return 0;
+  }
+  run_obj_t first = va_arg(ap, run_obj_t);
+  if (count == 1) {
+    va_end(ap);
+    return first;
+  }
+  struct run_cc_pair *head =
+      (struct run_cc_pair *)malloc(sizeof(struct run_cc_pair));
+  head->first = first;
+  struct run_cc_pair *curr = head;
+  for (int i = 1; i < count; i++) {
+    run_obj_t val = va_arg(ap, run_obj_t);
+    if (i == count - 1) {
+      curr->second = val;
+    } else {
+      struct run_cc_pair *next =
+          (struct run_cc_pair *)malloc(sizeof(struct run_cc_pair));
+      next->first = val;
+      curr->second = (run_obj_t)next;
+      curr = next;
+    }
+  }
+  va_end(ap);
+  return (run_obj_t)head;
+}
+
+#ifndef RUN_RUNTIME_DEFS_ONLY
+RUN_UNSEQUENCED static inline run_obj_t(compute)(run_obj_t x) { return x; }
+RUN_UNSEQUENCED static inline run_obj_t(data)(run_obj_t x) { return x; }
+RUN_UNSEQUENCED static inline run_obj_t(identity)(run_obj_t x) { return x; }
+RUN_UNSEQUENCED static inline run_obj_t(idempotent)(run_obj_t x) { return x; }
+RUN_UNSEQUENCED static inline run_obj_t(swap)(run_obj_t x, run_obj_t y) {
+  (void)y;
+  return x;
+}
+RUN_UNSEQUENCED static inline run_obj_t(copy)(run_obj_t x) { return x; }
+RUN_UNSEQUENCED static inline run_obj_t(delete)(run_obj_t x) {
+  (void)x;
+  return 0;
+}
+RUN_UNSEQUENCED static inline run_obj_t(function)(run_obj_t x) { return x; }
+RUN_UNSEQUENCED static inline run_obj_t(process)(run_obj_t x, run_obj_t y) {
+  (void)y;
+  return x;
+}
+RUN_UNSEQUENCED static inline run_obj_t(sequential)(run_obj_t g, run_obj_t f,
+                                                    run_obj_t x) {
+  (void)g;
+  (void)f;
+  return x;
+}
+
+/*
+ * Partial evaluator step function.
+ * Closure structure: [partial_step, f, y]
+ * When evaluated with argument a: returns eval(f, pair(y, a))
+ *
+ * Derived from: ⟦pev Γ y⟧ a = ⟦Γ⟧(y, a) (Section 2.2.2 of Monoidal Computer)
+ */
+RUN_REPRODUCIBLE
+static inline run_obj_t partial_step(run_obj_t self, run_obj_t a) {
+  run_obj_t *p = (run_obj_t *)self;
+  return eval(p[1], run_data_va(2, p[2], a));
+}
+
+/*
+ * partial(f, y) - Partial evaluator (pev)
+ *
+ * Creates a program p such that eval(p, a) = eval(f, pair(y, a))
+ */
+RUN_REPRODUCIBLE static inline run_obj_t(partial)(run_obj_t f, run_obj_t y) {
+  run_obj_t *closure = malloc(3 * sizeof(run_obj_t));
+  closure[0] = (run_obj_t)partial_step;
+  closure[1] = f;
+  closure[2] = y;
+  return (run_obj_t)closure;
+}
+RUN_UNSEQUENCED static inline run_obj_t(fixpoint)(run_obj_t e) {
+  (void)e;
+  return 0;
+}
+
+/*
+ * Parallel morphism (tensor product of morphisms)
+ *
+ * In Pavlovic's symmetric monoidal category:
+ *   f ⊗ g : A × U → B × V
+ *   where f: A → B and g: U → V
+ *
+ * Implementation uses the symmetric swap to rearrange (f, g, a, u)
+ * into ((f, a), (g, u)) then applies eval to each component.
+ *
+ * parallel(f, g, a, u) = (eval(f, a), eval(g, u))
+ */
+RUN_REPRODUCIBLE
+static inline run_obj_t(parallel)(run_obj_t f, run_obj_t g, run_obj_t a,
+                                  run_obj_t u) {
+  /* Conceptually: swap middle elements (f, g, a, u) -> (f, a, g, u)
+   * Then apply eval to (f, a) and (g, u) */
+  run_obj_t b = eval(f, a);
+  run_obj_t v = eval(g, u);
+  return run_data_va(2, b, v);
+}
+#else
+#ifndef RUN_RUNTIME_DATA_DEFINED
+#define RUN_RUNTIME_DATA_DEFINED
+RUN_UNSEQUENCED static inline run_obj_t(data)(run_obj_t x) { return x; }
+#endif
+#endif
+
+/* Internal step function morphisms - call with (self, args) */
+RUN_REPRODUCIBLE
+static inline run_obj_t run_step(run_obj_t morphism, run_obj_t step,
+                                 run_obj_t args) {
+  union {
+    run_obj_t (*f)(run_obj_t, run_obj_t);
+    run_obj_t v;
+  } cast;
+  cast.v = morphism;
+  return cast.f(step, args);
+}
+
+RUN_REPRODUCIBLE
+static inline run_obj_t program_step(run_obj_t step, run_obj_t args) {
+  union {
+    run_obj_t (*fn)(run_obj_t, run_obj_t);
+    run_obj_t v;
+  } cast;
+  cast.v = step;
+  return cast.fn(step, args);
+}
+
+RUN_REPRODUCIBLE
+static inline run_obj_t kleene_step(run_obj_t step, run_obj_t args) {
+  union {
+    run_obj_t (*f)(run_obj_t, run_obj_t);
+    run_obj_t v;
+  } cast;
+  cast.v = step;
+  return cast.f(step, args);
+}
+
+#define run_cc_constant(x) (x)
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* RUN_RUNTIME_H */
+
+/* END OF run_runtime.h */
+
+/* START OF run_bool.h */
+#ifndef RUN_BOOL_H
+#define RUN_BOOL_H
+
+
+/* Boolean constants for categorical encodings */
+/* true is p1 (first projection), false is p2 (second projection) */
+/* We use the numeric values 1 and 0 which eval(p, a) now interprets as p1 and
+ * p2 */
+#define RUN_BOOL_TRUE ((run_obj_t)1)
+#define RUN_BOOL_FALSE ((run_obj_t)0)
+
+RUN_UNSEQUENCED static inline run_obj_t run_bool_true(void) {
+  return RUN_BOOL_TRUE;
+}
+
+RUN_UNSEQUENCED static inline run_obj_t run_bool_false(void) {
+  return RUN_BOOL_FALSE;
+}
+
+RUN_UNSEQUENCED static inline run_obj_t run_bool_not(run_obj_t b) {
+  /* not(b) = iif(b, false, true) = eval(b, (false, true)) */
+  return eval(b, run_data_va(2, RUN_BOOL_FALSE, RUN_BOOL_TRUE));
+}
+
+RUN_UNSEQUENCED static inline run_obj_t run_bool_and(run_obj_t a, run_obj_t b) {
+  /* and(a, b) = iif(a, b, false) = eval(a, (b, false)) */
+  return eval(a, run_data_va(2, b, RUN_BOOL_FALSE));
+}
+
+RUN_UNSEQUENCED static inline run_obj_t run_bool_or(run_obj_t a, run_obj_t b) {
+  /* or(a, b) = iif(a, true, b) = eval(a, (true, b)) */
+  return eval(a, run_data_va(2, RUN_BOOL_TRUE, b));
+}
+
+RUN_UNSEQUENCED static inline run_obj_t run_bool_value(run_obj_t b) {
+  /* Convert projection-based bool back to C-style 0/1 for control flow */
+  return (run_obj_t)eval(b, run_data_va(2, (run_obj_t)1, (run_obj_t)0));
+}
+
+RUN_UNSEQUENCED static inline run_obj_t run_bool(run_obj_t b) {
+  return b ? RUN_BOOL_TRUE : RUN_BOOL_FALSE;
+}
+
+/* rho(x) = iif(iseq(x, true), true, false) */
+RUN_REPRODUCIBLE static inline run_obj_t run_rho(run_obj_t x) {
+  return eval(run_iseq(x, RUN_BOOL_TRUE),
+              run_data_va(2, RUN_BOOL_TRUE, RUN_BOOL_FALSE));
+}
+
+/* Macros for cleaner syntax */
+#define bool_true() run_bool_true()
+#define bool_false() run_bool_false()
+#define bool_not(x) run_bool_not((run_obj_t)(uintptr_t)(x))
+#define bool_and(a, b)                                                         \
+  run_bool_and((run_obj_t)(uintptr_t)(a), (run_obj_t)(uintptr_t)(b))
+#define bool_or(a, b)                                                          \
+  run_bool_or((run_obj_t)(uintptr_t)(a), (run_obj_t)(uintptr_t)(b))
+#define bool_value(x) run_bool_value((run_obj_t)(uintptr_t)(x))
+#define iseq(p, q)                                                             \
+  run_iseq((run_obj_t)(uintptr_t)(p), (run_obj_t)(uintptr_t)(q))
+#define rho(x) run_rho((run_obj_t)(uintptr_t)(x))
+
+#endif /* RUN_BOOL_H */
+
+/* END OF run_bool.h */
+
+/* START OF run_nat.h */
+#ifndef RUN_NAT_H
+#define RUN_NAT_H
+
+
+/*
+ * Natural Number Formalism (Dusko/von Neumann encoding)
+ *
+ * Numbers are encoded as paired structures with boolean prefixes:
+ *   0bar = <true, 0bar>   (self-referential fixpoint)
+ *   nbar+1 = <false, nbar> (successor wraps predecessor)
+ *
+ * The encoding uses run_cc_pair where:
+ *   - first: boolean flag (true for zero, false for successors)
+ *   - second: predecessor value (or self-reference for zero)
+ *
+ * Operations:
+ *   run_nat_zero()    - returns the representation of 0
+ *   run_nat_succ(n)   - returns <false, n>
+ *   run_nat_iszero(n) - returns the first component (true if 0)
+ *   run_nat_pred(n)   - returns the second component (predecessor)
+ *   run_nat(x)        - idempotent type filter for natural numbers
+ */
+
+/* Boolean constants for natural number encoding */
+#define RUN_NAT_TRUE RUN_BOOL_TRUE
+#define RUN_NAT_FALSE RUN_BOOL_FALSE
+
+/* Pre-allocated zero representation (allocated on first use) */
+static struct run_cc_pair *run_nat_zero_value = NULL;
+
+/* Initialize the zero value (lazy initialization) */
+RUN_REPRODUCIBLE
+static inline run_obj_t run_nat_zero(void) {
+  static run_obj_t canonical_zero = 0;
+  if (canonical_zero == 0) {
+    run_nat_zero_value =
+        (struct run_cc_pair *)malloc(sizeof(struct run_cc_pair));
+    run_nat_zero_value->first = RUN_NAT_TRUE;
+    /* Fixed point: zero points to its own container */
+    run_nat_zero_value->second = 0; // Temporary
+    canonical_zero = embed((run_obj_t)run_nat_zero_value);
+    run_nat_zero_value->second = canonical_zero; // Complete the fixpoint
+  }
+  return canonical_zero;
+}
+
+/* succ: Successor function */
+RUN_REPRODUCIBLE
+static inline run_obj_t run_nat_succ(run_obj_t n) {
+  return embed(run_data_va(2, RUN_NAT_FALSE, n));
+}
+
+/* iszero: Test if a natural number is zero */
+RUN_UNSEQUENCED
+static inline run_obj_t run_nat_iszero(run_obj_t n) {
+  if (n == 0)
+    return RUN_NAT_TRUE;
+  if (n >= (run_obj_t)1 && n <= (run_obj_t)4096)
+    return RUN_NAT_FALSE;
+  struct run_cc_pair *p = (struct run_cc_pair *)(uintptr_t)eval(n, 0);
+  return p ? p->first : RUN_NAT_FALSE;
+}
+
+/* pred: Predecessor function */
+RUN_UNSEQUENCED
+static inline run_obj_t run_nat_pred(run_obj_t n) {
+  if (n == 0)
+    return 0;
+  if (n >= (run_obj_t)1 && n <= (run_obj_t)4096)
+    return n - 1;
+  struct run_cc_pair *p = (struct run_cc_pair *)(uintptr_t)eval(n, 0);
+  return p ? p->second : 0;
+}
+
+/* run_nat: Idempotent type filter for natural numbers */
+RUN_REPRODUCIBLE
+static inline run_obj_t run_nat(run_obj_t x) {
+  /* Check if this is the zero representation */
+  if (run_nat_iszero(x) == RUN_NAT_TRUE) {
+    return x;
+  }
+
+  /* For successors, recursively validate the predecessor */
+  run_obj_t pred = run_nat_pred(x);
+  run_obj_t pred_validated = run_nat(pred);
+  if (pred_validated == pred) {
+    return x;
+  }
+  return run_nat_succ(pred_validated);
+}
+
+/* Convert C integer to natural number representation */
+RUN_REPRODUCIBLE
+static inline run_obj_t run_nat_from_int(intptr_t n) {
+  if (n <= 0)
+    return run_nat_zero();
+  /* Safety: if n looks like a pointer, don't recurse (avoids double-wrapping
+   * stack overflow) */
+  if (n > 1000000)
+    return (run_obj_t)n;
+  return run_nat_succ(run_nat_from_int(n - 1));
+}
+
+/* Convert natural number representation to C integer */
+RUN_REPRODUCIBLE
+static inline intptr_t run_nat_to_int(run_obj_t n) {
+  intptr_t count = 0;
+  while (run_nat_iszero(n) == RUN_NAT_FALSE) {
+    count++;
+    n = run_nat_pred(n);
+  }
+  return count;
+}
+
+/* add: Addition morphism (recursive structural definition) */
+RUN_REPRODUCIBLE
+static inline run_obj_t run_nat_add(run_obj_t n, run_obj_t m) {
+  /* if n is zero, return m */
+  if (run_nat_iszero(n) == RUN_NAT_TRUE) {
+    return m;
+  }
+  /* if n is succ(n'), return succ(add(n', m)) */
+  return run_nat_succ(run_nat_add(run_nat_pred(n), m));
+}
+
+/* mult: Multiplication morphism */
+RUN_REPRODUCIBLE
+static inline run_obj_t run_nat_mult(run_obj_t n, run_obj_t m) {
+  /* if n is zero, return zero */
+  if (run_nat_iszero(n) == RUN_NAT_TRUE) {
+    return run_nat_zero();
+  }
+  /* if n is succ(n'), return add(m, mult(n', m)) */
+  return run_nat_add(m, run_nat_mult(run_nat_pred(n), m));
+}
+
+/* Macros for cleaner syntax */
+#define nat_zero() run_nat_zero()
+#define nat_succ(n) run_nat_succ((run_obj_t)(uintptr_t)(n))
+#define nat_iszero(n) run_nat_iszero((run_obj_t)(uintptr_t)(n))
+#define nat_pred(n) run_nat_pred((run_obj_t)(uintptr_t)(n))
+#define nat(x) run_nat((run_obj_t)(uintptr_t)(x))
+#define nat_from_int(n) run_nat_from_int((intptr_t)(n))
+#define nat_to_int(n) run_nat_to_int((run_obj_t)(uintptr_t)(n))
+#define nat_add(n, m)                                                          \
+  run_nat_add((run_obj_t)(uintptr_t)(n), (run_obj_t)(uintptr_t)(m))
+#define nat_mult(n, m)                                                         \
+  run_nat_mult((run_obj_t)(uintptr_t)(n), (run_obj_t)(uintptr_t)(m))
+
+#endif /* RUN_NAT_H */
+
+/* END OF run_nat.h */
+
+/* START OF expr.h */
+#ifndef RUN_CC_EXPR_H
+#define RUN_CC_EXPR_H
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct ExprInfo {
+  char *text;
+  int is_call;
+  int is_morphism;
+  int is_printf;
+  int is_self_call;
+  char *func_name;
+  char *args;
+} ExprInfo;
+
+void free_expr_info(ExprInfo *e);
+ExprInfo *new_expr_info(const char *text);
+ExprInfo *new_recursive_call_info(const char *func, const char *args);
+
+ExprInfo *make_op_1(const char *op, const char *axiom, ExprInfo *e1);
+ExprInfo *make_op_2(const char *op, const char *axiom, int needs_nat,
+                    int needs_bool, ExprInfo *e1, ExprInfo *e2);
+
+#endif
+
+/* END OF expr.h */
+
+/* START OF context.h */
+#ifndef RUN_CC_CONTEXT_H
+#define RUN_CC_CONTEXT_H
+
+typedef struct RunCCContext {
+  char *func_name;
+  int is_recursive;
+  int uses_aggregate; /* Set if return type or params are struct/union */
+  int ret_is_void;
+
+  char **params;
+  char **param_decls;
+  char **param_types;
+  int param_count;
+  int param_cap;
+
+  char *ret_type;
+  char *attributes;
+  int tco_arg_idx;
+
+  struct RunCCContext *prev;
+} RunCCContext;
+
+void push_context(const char *func_name);
+void push_context_from_staging(const char *func_name);
+void set_context_ret_info(const char *type, int ret_is_void,
+                          int ret_is_aggregate);
+void set_context_attributes(const char *attrs);
+void pop_context();
+/* Helpers for grammar */
+int is_current_func(const char *name);
+void mark_recursive();
+RunCCContext *get_current_context();
+
+#endif
+
+/* END OF context.h */
+
+/* START OF val.h */
+#ifndef VAL_H
+#define VAL_H
+
+
+/*
+ * val_ptr is the core semantic value shared across modular parsers.
+ * In run-cc, this corresponds to the ExprInfo pointer.
+ */
+struct ExprInfo;
+typedef struct ExprInfo *val_ptr;
+
+/* Standard YYSTYPE mapping is now handled by generated parser headers */
+
+/*
+ * val_callback_t defines a generic callback signature for communication
+ * between grammar modules or other driver logic.
+ */
+typedef void (*val_callback_t)(val_ptr);
+
+typedef enum {
+  TYPE_KIND_NONE = 0,
+  TYPE_KIND_INT,
+  TYPE_KIND_LONG,
+  TYPE_KIND_RUN_OBJ_T,
+  TYPE_KIND_VOID,
+  TYPE_KIND_OTHER
+} TypeKind;
+
+typedef struct {
+  char *full;
+  char *stripped;
+  TypeKind kind;
+  unsigned int type_count;
+  unsigned int qualifier_count;
+  unsigned int has_struct_union;
+} TypeSpecInfo;
+
+typedef enum {
+  SIMPLE_CAST_NONE = 0,
+  SIMPLE_CAST_INT,
+  SIMPLE_CAST_LONG,
+  SIMPLE_CAST_RUN_OBJ_T
+} SimpleCastKind;
+
+typedef struct {
+  char *text;
+  SimpleCastKind simple_kind;
+} TypeNameInfo;
+
+typedef struct {
+  int kind;
+  char *lexeme;
+} MorphInfo;
+
+typedef struct {
+  char *text;
+  char *ptr_prefix;
+} DeclaratorInfo;
+
+typedef struct ExprList {
+  struct ExprInfo *expr;
+  struct ExprList *next;
+} ExprList;
+
+#ifndef REAL_STYPE_DEFINED
+#define REAL_STYPE_DEFINED
+union REAL_STYPE {
+  char *str;
+  val_ptr val;
+  TypeSpecInfo type_spec;
+  MorphInfo morph;
+  DeclaratorInfo decl;
+  TypeNameInfo type_name;
+  ExprList *list;
+};
+typedef union REAL_STYPE REAL_STYPE;
+typedef union REAL_STYPE BOOL_STYPE;
+typedef union REAL_STYPE NAT_STYPE;
+typedef union REAL_STYPE VAL_STYPE;
+#endif
+
+#ifndef YYSTYPE
+#define YYSTYPE REAL_STYPE
+#endif
+#define YYSTYPE_IS_DECLARED 1
+
+#ifndef YY_TYPEDEF_YY_SCANNER_T
+#define YY_TYPEDEF_YY_SCANNER_T
+typedef void *yyscan_t;
+#endif
+
+/* Cross-parser bridge helpers */
+void park_val(val_ptr p);
+val_ptr pickup_val(void);
+void park_str(char *s);
+char *pickup_str(void);
+void bridge_val_cb(val_ptr p);
+void bridge_str_cb(val_ptr p);
+
+#endif /* VAL_H */
+
+/* END OF val.h */
+
+/* START OF cc.h */
+#ifndef RUN_CC_H
+#define RUN_CC_H
+
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+
+static inline int streq(const char *a, const char *b) {
+  if (!a || !b)
+    return 0;
+  while (*a && *b) {
+    if (*a != *b)
+      return 0;
+    a++;
+    b++;
+  }
+  return *a == *b;
+}
+
+#ifndef MODULAR_PARSER
+#include "parser.tab.h"
+#define top_debug real_debug
+extern int real_debug;
+#endif
+
+/* Include lexer header except when compiling the lexer itself */
+#ifndef TOP_LEXER_SOURCE
+#define YY_HEADER_EXPORT_START_CONDITIONS
+#include "cc.yy.h"
+#endif
+
+/* Global State */
+extern int mode;
+#define MODE_DISCOVERY 0
+#define MODE_C_TO_RUN 1
+#define MODE_RUN_TO_C 2
+
+extern int in_discovery_pass;
+extern int verbose;
+extern int lineno;
+extern char *filename;
+extern int val_mode;
+extern int run_mode;
+extern int needs_run_nat;
+extern int needs_run_bool;
+extern int suppress_val_errors;
+
+/* Buffering / Suppression */
+extern int suppress_print;
+void start_buffering(void);
+char *stop_buffering(void);
+void append_buffer(const char *s);
+
+/* Lexer Helpers */
+extern char *current_func;
+extern char *last_id;
+extern int id_nesting_level;
+extern int in_system_header;
+
+/* Staging for Parameters */
+extern char **staging_params;
+extern char **staging_param_decls;
+extern char **staging_param_types;
+extern int staging_param_count;
+extern int staging_param_cap;
+extern int staging_uses_aggregate;
+extern char *staging_func_name;
+
+void reset_params(void);
+void add_param(const char *name, const char *decl, const char *type,
+               int is_aggregate);
+void save_func_name(const char *name);
+void set_func(const char *name);
+void clear_func(void);
+
+/* Lexer State IDs */
+extern int STATE_INITIAL;
+extern int STATE_PREPROC_LINE;
+extern int STATE_PREPROC_SKIP;
+extern int STATE_PAREN_SKIP;
+
+/* Function Hooks */
+void on_function_header(const char *attrs, TypeSpecInfo spec, const char *decl,
+                        const char *ptr_prefix);
+void on_run_header(void);
+void on_function_start(const char *func_name, const char *ret_type);
+void on_function_end(void);
+void on_declaration_end(void);
+char *on_declaration(const char *attrs, TypeSpecInfo spec,
+                     const char *decl_list);
+void on_storage_class_typedef(void);
+void on_declarator(const char *name);
+void on_type_scope_enter(void);
+void on_type_scope_exit(void);
+void register_function_return_type(const char *name, const char *ret_type,
+                                   TypeKind kind);
+TypeKind lookup_function_return_kind(const char *name);
+
+struct RunCCContext;
+void emit_nested_step_full(struct RunCCContext *ctx, const char *body);
+void emit_all_specialized_code(void);
+void reset_specialized_code(void);
+
+/* JIT Hooks */
+void run_jit_cleanup(void);
+
+#define safe_asprintf(ptr, ...)                                                \
+  do {                                                                         \
+    if (asprintf(ptr, __VA_ARGS__) == -1) {                                    \
+      fprintf(stderr, "asprintf failed\n");                                    \
+      exit(1);                                                                 \
+    }                                                                          \
+  } while (0)
+
+/* Type Classification */
+int is_type(const char *name);
+int register_type(const char *name);
+int get_symbol_table_size(void);
+
+ExprInfo *new_expr_info(const char *text);
+ExprInfo *new_call_info(const char *func, const char *args);
+ExprInfo *new_recursive_call_info(const char *func, const char *args);
+void free_expr_info(ExprInfo *e);
+
+/* Morphological Expression Builders */
+ExprInfo *make_nat_add(ExprInfo *e1, ExprInfo *e2);
+ExprInfo *make_nat_mult(ExprInfo *e1, ExprInfo *e2);
+ExprInfo *make_run_iseq(ExprInfo *e1, ExprInfo *e2);
+ExprInfo *make_run_bool_not(ExprInfo *e1);
+ExprInfo *make_generic_op(const char *op, ExprInfo *e1, ExprInfo *e2);
+ExprInfo *make_op_1(const char *op, const char *axiom, ExprInfo *e1);
+ExprInfo *make_op_2(const char *op, const char *axiom, int needs_nat,
+                    int needs_bool, ExprInfo *e1, ExprInfo *e2);
+
+/* Output redirection */
+void print_token(const char *t);
+void print_str(const char *s);
+
+/* ArgList for JIT (internal to jit.c) */
+#define MAX_ARGS 1024
+#define SCRATCH_SIZE 65536
+
+typedef struct ArgList {
+  char *args[MAX_ARGS];
+  int count;
+} ArgList;
+
+/* Missing State */
+extern int buffer_owner;
+extern int r_paren_depth;
+extern int is_typedef;
+extern int suppress_recursive_original;
+
+/* Pass-specific functions */
+void action_return_empty(void);
+void action_return_expr(ExprInfo *e);
+int should_emit_run(void);
+void reset_buffer(void);
+
+/* Lexer internal API */
+void lex_init(void);
+void init_states(int initial, int preproc_line, int preproc_skip,
+                 int paren_skip);
+int handle_line_marker(const char *text);
+int handle_identifier(void *lvalp, const char *text);
+void error(const char *s);
+void push_native_state(yyscan_t yyscanner);
+void pop_state(yyscan_t yyscanner);
+int is_native_context(void);
+
+/* Diagnostic Helpers */
+void diagnostic_report(yyscan_t scanner, const char *type, const char *fmt,
+                       ...);
+
+#define DEBUG_PARSER(scanner, ...)                                             \
+  if (verbose > 1)                                                             \
+  diagnostic_report(scanner, "DEBUG", __VA_ARGS__)
+
+#define PARSER_ERROR(scanner, ...)                                             \
+  diagnostic_report(scanner, "error", __VA_ARGS__)
+
+#define LEXER_ERROR(scanner, ...)                                              \
+  diagnostic_report(scanner, "lexer error", __VA_ARGS__)
+
+#define PARSER_RECOVER(scanner, ...)                                           \
+  if (verbose)                                                                 \
+  diagnostic_report(scanner, "recovery", __VA_ARGS__)
+
+/* Reentrant Helpers - use top_* directly from cc.yy.h */
+void park_lookahead(int tok, YYSTYPE lval);
+int bridging_lex(YYSTYPE *lvalp, yyscan_t yyscanner);
+ExprInfo *reduce_axiom_string(const char *text, yyscan_t scanner);
+void set_active_scanner(yyscan_t scanner);
+yyscan_t get_active_scanner(void);
+
+/* Exported Parser Entry Points */
+int top_parse(yyscan_t scanner, val_callback_t callback);
+int expr_parse(yyscan_t scanner, val_callback_t callback);
+int decl_parse(yyscan_t scanner, val_callback_t callback);
+int stmt_parse(yyscan_t scanner, val_callback_t callback);
+int nat_parse(yyscan_t scanner, val_callback_t callback);
+int bool_parse(yyscan_t scanner, val_callback_t callback);
+
+/* JIT driver */
+extern char **environ;
+int jit_execute(const char *cc_bin, int argc, char **argv, int arg_start_index);
+
+/* Specialized code */
+void print_specialized_preamble(void);
+
+#endif
+/* Parser Mode Selection - Implementing Structural Grammar Dispatch
+ *
+ * This file shows how to implement mode selection at parser initialization
+ * to enable structural grammar dispatch without runtime conditionals.
+ */
+
+
+/* END OF cc.h */
+
+}
+
+%code provides {
+
+/* Lexer state for mode token injection */
+extern int mode_token_injected;
+
+/* Function to get the mode token to inject */
+static inline int get_mode_token(void) {
+  if (mode == MODE_C_TO_RUN) {
+    if (in_system_header) {
+      return MODE_MARKER_PASSTHROUGH;
+    } else if (in_discovery_pass) {
+      return MODE_MARKER_DISCOVERY;
+    } else {
+      return MODE_MARKER_C_TO_RUN;
+    }
+  } else {
+    return MODE_MARKER_C_TO_RUN;
+  }
+}
+
 }
 
 %code {
     #include <ctype.h>
-    #include "cc.h"
+    /* #include "cc.h" */
 
 
     
     int real_error(yyscan_t scanner, val_callback_t callback, const char *msg) {
         (void)callback;
+        if (val_mode) {
+             if (suppress_val_errors) return 0;
+             fprintf(stderr, "Val Parser Error: %s at '%s'\n", msg, top_get_text(scanner));
+             return 0;
+        }
         PARSER_ERROR(scanner, "%s at '%s'", msg, top_get_text(scanner));
         return 0;
     }
@@ -239,6 +1275,304 @@
         free(new_first);
         return new_args;
     }
+
+
+
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+/* Forward declarations to satisfy pure parser */
+int val_lex(YYSTYPE *lvalp, yyscan_t yyscanner);
+void val_error(yyscan_t scanner, val_callback_t callback, const char *msg);
+extern int top_lex(YYSTYPE *lvalp, yyscan_t yyscanner);
+char *top_get_text(yyscan_t yyscanner);
+
+static ExprList *new_expr_list(ExprInfo *e, ExprList *n) {
+    ExprList *l = malloc(sizeof(*l));
+    l->expr = e;
+    l->next = n;
+    return l;
+}
+
+static void free_expr_list(ExprList *l) {
+    while (l) {
+        ExprList *next = l->next;
+        if (l->expr) free_expr_info(l->expr);
+        free(l);
+        l = next;
+    }
+}
+
+static ExprInfo *reduce_identity(ExprList *args) {
+    if (!args) return NULL;
+    if (!args->next) return args->expr;
+    ExprInfo *rest = reduce_identity(args->next);
+    char *s; safe_asprintf(&s, "eval ( data ( %s ) , %s )", args->expr->text, rest->text);
+    ExprInfo *res = new_expr_info(s); free(s);
+    /* We don't free args->expr here because it's owned by the list which we might free later,
+       but actually we need to be careful with ownership.
+       Let's say this function 'consumes' the list and its expressions. */
+    free_expr_info(args->expr);
+    free_expr_info(rest);
+    free(args);
+    return res;
+}
+
+static ExprInfo *reduce_idempotent(ExprList *args) {
+    if (!args) return NULL;
+    if (!args->next) return args->expr;
+    ExprInfo *rest = reduce_idempotent(args->next);
+    char *s; safe_asprintf(&s, "data ( eval ( %s , %s ) )", args->expr->text, rest->text);
+    ExprInfo *res = new_expr_info(s); free(s);
+    free_expr_info(args->expr);
+    free_expr_info(rest);
+    free(args);
+    return res;
+}
+
+static ExprInfo *reduce_program(ExprInfo *f, ExprList *args) {
+    if (!args) return f;
+    ExprInfo *current = f;
+    ExprList *cur_arg = args;
+    while (cur_arg) {
+        char *s;
+        if (current == f) {
+            safe_asprintf(&s, "program ( %s , %s )", current->text, cur_arg->expr->text);
+        } else {
+            safe_asprintf(&s, "eval ( %s , %s )", current->text, cur_arg->expr->text);
+        }
+        ExprInfo *next_expr = new_expr_info(s); free(s);
+        if (current != f) free_expr_info(current);
+        current = next_expr;
+        cur_arg = cur_arg->next;
+    }
+    // Note: this implementation doesn't free the original args.
+    // Usually a higher level takes care of that.
+    return current;
+}
+
+static ExprInfo *reduce_kleene(ExprInfo *g, ExprList *args) {
+    if (!args) return g;
+    ExprInfo *current = g;
+    ExprList *cur_arg = args;
+    while (cur_arg) {
+        char *s;
+        if (current == g) {
+            safe_asprintf(&s, "kleene ( %s , %s )", current->text, cur_arg->expr->text);
+        } else {
+            safe_asprintf(&s, "eval ( %s , %s )", current->text, cur_arg->expr->text);
+        }
+        ExprInfo *next_expr = new_expr_info(s); free(s);
+        if (current != g) free_expr_info(current);
+        current = next_expr;
+        cur_arg = cur_arg->next;
+    }
+    return current;
+}
+
+static ExprInfo *reduce_eval(ExprInfo *p, ExprList *args) {
+    ExprInfo *current = p;
+    ExprList *cur_arg = args;
+    while (cur_arg) {
+        char *s; safe_asprintf(&s, "eval ( %s , %s )", current->text, cur_arg->expr->text);
+        ExprInfo *next_expr = new_expr_info(s); free(s);
+        if (current != p) free_expr_info(current);
+        current = next_expr;
+        cur_arg = cur_arg->next;
+    }
+    return current;
+}
+
+typedef enum {
+    MORPH_RUN,
+    MORPH_EVAL,
+    MORPH_COMPUTE,
+    MORPH_PROGRAM,
+    MORPH_DATA,
+    MORPH_IDEMPOTENT,
+    MORPH_SWAP,
+    MORPH_COPY,
+    MORPH_DELETE,
+    MORPH_FUNCTION,
+    MORPH_PROCESS,
+    MORPH_SEQUENTIAL,
+    MORPH_PARALLEL,
+    MORPH_PARTIAL,
+    MORPH_FIXPOINT,
+    MORPH_KLEENE,
+    MORPH_IDENTITY,
+    MORPH_ISEQ,
+    MORPH_RHO,
+    MORPH_BOOL_VALUE,
+} morphism_kind_t;
+
+static ExprInfo *apply_generic_call(const char *name, ExprList *args) {
+    char *lower_name = strdup(name);
+    for (int i = 0; lower_name[i]; i++) {
+        if (lower_name[i] >= 'A' && lower_name[i] <= 'Z')
+            lower_name[i] = lower_name[i] + ('a' - 'A');
+    }
+
+    char *s = NULL;
+    if (!args) {
+        safe_asprintf(&s, "%s ( )", lower_name);
+    } else {
+        ExprList *cur = args;
+        while (cur) {
+            if (!s) {
+                safe_asprintf(&s, "%s ( %s", lower_name, cur->expr->text);
+            } else {
+                char *old = s;
+                safe_asprintf(&s, "%s , %s", old, cur->expr->text);
+                free(old);
+            }
+            cur = cur->next;
+        }
+        if (s) {
+            char *old = s;
+            safe_asprintf(&s, "%s )", old);
+            free(old);
+        }
+    }
+    free(lower_name);
+
+    ExprInfo *res = new_expr_info(s);
+    free(s);
+    free_expr_list(args);
+    return res;
+}
+
+static ExprInfo *apply_morphism_kind(morphism_kind_t kind, ExprList *args) {
+    if (!args) {
+        return NULL;
+    }
+
+    switch (kind) {
+        case MORPH_IDENTITY:
+            return reduce_identity(args);
+        case MORPH_IDEMPOTENT:
+            return reduce_idempotent(args);
+        case MORPH_PROGRAM: {
+            ExprInfo *res = reduce_program(args->expr, args->next);
+            free(args);
+            return res;
+        }
+        case MORPH_KLEENE: {
+            ExprInfo *res = reduce_kleene(args->expr, args->next);
+            free(args);
+            return res;
+        }
+        case MORPH_BOOL_VALUE: {
+            char *s;
+            safe_asprintf(&s, "run_bool_value ( %s )", args->expr->text);
+            ExprInfo *res = new_expr_info(s);
+            free(s);
+            free_expr_list(args);
+            return res;
+        }
+        case MORPH_ISEQ: {
+            char *s;
+            safe_asprintf(&s, "run_iseq ( %s , %s )", args->expr->text,
+                          args->next->expr->text);
+            ExprInfo *res = new_expr_info(s);
+            free(s);
+            free_expr_list(args);
+            return res;
+        }
+        case MORPH_RHO: {
+            char *s;
+            safe_asprintf(&s, "run_rho ( %s )", args->expr->text);
+            ExprInfo *res = new_expr_info(s);
+            free(s);
+            free_expr_list(args);
+            return res;
+        }
+        case MORPH_EVAL: {
+            ExprInfo *res = reduce_eval(args->expr, args->next);
+            free(args);
+            return res;
+        }
+        case MORPH_COMPUTE:
+        case MORPH_DATA:
+        case MORPH_FUNCTION: {
+            ExprInfo *res = new_expr_info(args->expr->text);
+            free_expr_list(args);
+            return res;
+        }
+        case MORPH_COPY: {
+            char *s;
+            safe_asprintf(&s, "run_data_va ( 2 , %s , %s )", args->expr->text,
+                          args->expr->text);
+            ExprInfo *res = new_expr_info(s);
+            free(s);
+            free_expr_list(args);
+            return res;
+        }
+        case MORPH_SWAP: {
+            if (args && args->next) {
+                char *s;
+                safe_asprintf(&s, "run_data_va ( 2 , %s , %s )",
+                              args->next->expr->text, args->expr->text);
+                ExprInfo *res = new_expr_info(s);
+                free(s);
+                free_expr_list(args);
+                return res;
+            }
+            break;
+        }
+        case MORPH_PROCESS: {
+            ExprInfo *res = new_expr_info(args->expr->text);
+            free_expr_list(args);
+            return res;
+        }
+        case MORPH_DELETE: {
+            ExprInfo *res = new_expr_info("0");
+            free_expr_list(args);
+            return res;
+        }
+        case MORPH_SEQUENTIAL: {
+            if (args && args->next && args->next->next) {
+                char *s;
+                safe_asprintf(&s, "eval ( %s , eval ( %s , %s ) )",
+                              args->next->expr->text, args->expr->text,
+                              args->next->next->expr->text);
+                ExprInfo *res = new_expr_info(s);
+                free(s);
+                free_expr_list(args);
+                return res;
+            }
+            break;
+        }
+        case MORPH_PARTIAL: {
+            if (args && args->next) {
+                char *s;
+                safe_asprintf(&s, "partial ( %s , %s )", args->expr->text,
+                              args->next->expr->text);
+                ExprInfo *res = new_expr_info(s);
+                free(s);
+                free_expr_list(args);
+                return res;
+            }
+            break;
+        }
+        case MORPH_RUN:
+            return apply_generic_call("run", args);
+        case MORPH_PARALLEL:
+            return apply_generic_call("parallel", args);
+        case MORPH_FIXPOINT:
+            return apply_generic_call("fixpoint", args);
+        default:
+            break;
+    }
+
+    free_expr_list(args);
+    return NULL;
+}
+
 }
 
 %define api.pure full
@@ -372,13 +1706,23 @@
 %type <val> expression constant_expression assignment_expression conditional_expression logical_or_expression logical_and_expression inclusive_or_expression exclusive_or_expression and_expression equality_expression relational_expression shift_expression additive_expression multiplicative_expression cast_expression unary_expression postfix_expression primary_expression argument_expression_list recursive_call if_prefix while_prefix
 %type <str> assignment_operator pavlovic_operator string_literal_sequence generic_identifier any_id attribute_specifier_list attribute_specifier_list_opt attribute_specifier attribute_list attribute attribute_token attribute_scoped_token attribute_argument_clause_opt label statement compound_statement expression_statement selection_statement iteration_statement jump_statement statement_list labeled_statement static_assert_tail
 
+
+%token START_VAL 1007
+
+/* Val.y definitions */
+%type <val> val_axiom arithmetic_axiom logic_axiom categorical_axiom
+%type <list> val_list
+%type <str> any_val_id
+%type <morph> morphism_kind
 %%
+
 
 entry:
   START_TOP translation_unit { YYACCEPT; }
 | START_DECL declaration { if (callback) callback((val_ptr)$2); YYACCEPT; }
 | START_STMT statement_list { YYACCEPT; }
 | START_EXPR expression { if (callback) callback($2); YYACCEPT; }
+| START_VAL val_start { YYACCEPT; }
 ;
 
 /* TOP Level */
@@ -1382,5 +2726,172 @@ attribute_argument_clause_opt
 	: %empty { $$ = strdup(""); }
 	| '(' argument_expression_list ')' { safe_asprintf(&$$, "( %s )", $2->text); free_expr_info($2); }
 	;
+
+
+/* Val.y rules */
+
+
+val_start:
+    val_axiom { if (callback) callback($1); }
+    ;
+
+val_axiom:
+    arithmetic_axiom { $$ = $1; }
+  | logic_axiom { $$ = $1; }
+  | categorical_axiom { $$ = $1; }
+  | '(' val_axiom ')' { $$ = $2; }
+  ;
+
+arithmetic_axiom:
+      '+' '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) + (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+      }
+    | '-' '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) - (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+    }
+    | '*' '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) * (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+    }
+    | '/' '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) / (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+    }
+    | '%' '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) %% (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+    }
+    | '&' '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) & (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+    }
+    | '|' '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) | (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+    }
+    | '^' '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) ^ (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+    }
+    | '~' '(' val_axiom ')' {
+        char *s; safe_asprintf(&s, "(~(%s))", $3->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3);
+    }
+    | RUN_CC_CONSTANT '(' val_axiom ')' {
+        char *s; safe_asprintf(&s, "(%s)", $3->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3);
+    }
+    ;
+
+logic_axiom:
+      '>' '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) > (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+      }
+    | '<' '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) < (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+    }
+    | GE_OP '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) >= (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+    }
+    | LE_OP '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) <= (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+    }
+    | EQ_OP '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) == (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+    }
+    | NE_OP '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) != (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+    }
+    | AND_OP '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) && (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+    }
+    | OR_OP '(' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "((%s) || (%s))", $3->text, $5->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5);
+    }
+    | '!' '(' val_axiom ')' {
+        char *s; safe_asprintf(&s, "(!(%s))", $3->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3);
+    }
+categorical_axiom:
+      morphism_kind { $$ = new_expr_info($1.lexeme); free($1.lexeme); }
+    | morphism_kind '(' val_list ')' { $$ = apply_morphism_kind($1.kind, $3); free($1.lexeme); }
+    | morphism_kind '[' val_list ']' { $$ = apply_morphism_kind($1.kind, $3); free($1.lexeme); }
+    | morphism_kind '(' ')' { $$ = new_expr_info($1.lexeme); free($1.lexeme); }
+    | morphism_kind '[' ']' { $$ = new_expr_info($1.lexeme); free($1.lexeme); }
+    | IFTE '(' val_axiom ',' val_axiom ',' val_axiom ')' {
+        char *s; safe_asprintf(&s, "ifte ( %s , %s , %s )", $3->text, $5->text, $7->text);
+        $$ = new_expr_info(s); free(s);
+        free_expr_info($3); free_expr_info($5); free_expr_info($7);
+    }
+    | any_val_id '(' val_list ')' { $$ = apply_generic_call($1, $3); free($1); }
+    | any_val_id '[' val_list ']' { $$ = apply_generic_call($1, $3); free($1); }
+    | any_val_id '(' ')' { $$ = apply_generic_call($1, NULL); free($1); }
+    | any_val_id '[' ']' { $$ = apply_generic_call($1, NULL); free($1); }
+    | any_val_id { $$ = new_expr_info($1); free($1); }
+    | CONSTANT   { $$ = new_expr_info($1); free($1); }
+    | STRING_LITERAL { $$ = new_expr_info($1); free($1); }
+    ;
+
+any_val_id:
+      IDENTIFIER | TYPE_NAME | RECURSIVE_ID
+    ;
+
+morphism_kind:
+      RUN { $$.kind = MORPH_RUN; $$.lexeme = $1; }
+    | EVAL { $$.kind = MORPH_EVAL; $$.lexeme = $1; }
+    | COMPUTE { $$.kind = MORPH_COMPUTE; $$.lexeme = $1; }
+    | PROGRAM { $$.kind = MORPH_PROGRAM; $$.lexeme = $1; }
+    | DATA { $$.kind = MORPH_DATA; $$.lexeme = $1; }
+    | IDEMPOTENT { $$.kind = MORPH_IDEMPOTENT; $$.lexeme = $1; }
+    | SWAP { $$.kind = MORPH_SWAP; $$.lexeme = $1; }
+    | COPY { $$.kind = MORPH_COPY; $$.lexeme = $1; }
+    | DELETE { $$.kind = MORPH_DELETE; $$.lexeme = $1; }
+    | FUNCTION { $$.kind = MORPH_FUNCTION; $$.lexeme = $1; }
+    | PROCESS { $$.kind = MORPH_PROCESS; $$.lexeme = $1; }
+    | SEQUENTIAL { $$.kind = MORPH_SEQUENTIAL; $$.lexeme = $1; }
+    | PARALLEL { $$.kind = MORPH_PARALLEL; $$.lexeme = $1; }
+    | PARTIAL { $$.kind = MORPH_PARTIAL; $$.lexeme = $1; }
+    | FIXPOINT { $$.kind = MORPH_FIXPOINT; $$.lexeme = $1; }
+    | KLEENE { $$.kind = MORPH_KLEENE; $$.lexeme = $1; }
+    | IDENTITY { $$.kind = MORPH_IDENTITY; $$.lexeme = $1; }
+    | ISEQ { $$.kind = MORPH_ISEQ; $$.lexeme = $1; }
+    | RHO { $$.kind = MORPH_RHO; $$.lexeme = $1; }
+    | BOOL_VALUE { $$.kind = MORPH_BOOL_VALUE; $$.lexeme = $1; }
+    ;
+
+val_list:
+      val_axiom { $$ = new_expr_list($1, NULL); }
+    | val_axiom ',' val_list { $$ = new_expr_list($1, $3); }
+    ;
+
 
 %%
